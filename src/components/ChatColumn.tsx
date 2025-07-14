@@ -8,6 +8,7 @@ type Message = {
 };
 
 type ChatColumnProps = {
+  startPrompt: string;
   setArchitecture: React.Dispatch<React.SetStateAction<any>>;
 };
 
@@ -49,16 +50,16 @@ const openai = new OpenAI({
 });
 
 // --- Компонент ---
-export function ChatColumn({ setArchitecture }: ChatColumnProps) {
+export function ChatColumn({startPrompt, setArchitecture }: ChatColumnProps) {
   const [inputValue, setInputValue] = useState('');
   const [messages, setMessages] = useState<Message[]>([
-    {
-      author: 'gpt',
-      text: 'Здравствуйте! Я ваш GPT-тренер. Какой проект спроектируем?',
-    },
-  ]);
+  { author: 'gpt', text: 'Здравствуйте! Я ваш GPT-тренер.' },
+  // Сразу добавляем "невидимое" первое сообщение от пользователя
+  { author: 'user', text: startPrompt },
+]);
   const [isLoading, setIsLoading] = useState(false);
 
+  const isInitialRequestSent = useRef(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -71,6 +72,59 @@ export function ChatColumn({ setArchitecture }: ChatColumnProps) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isLoading]);
+
+  useEffect(() => {
+  // Этот эффект срабатывает каждый раз, когда меняется массив сообщений
+  const lastMessage = messages[messages.length - 1];
+
+  // Если последнее сообщение от пользователя, значит, нужно получить ответ от GPT
+  if (lastMessage?.author === 'user') {
+    if (lastMessage.text === startPrompt && isInitialRequestSent.current) {
+      return; // Если это стартовый промпт и мы уже отправляли запрос, выходим
+    }
+    const sendRequest = async () => {
+      setIsLoading(true);
+      try {
+        const messagesForApi = [
+          { role: 'system', content: SYSTEM_PROMPT },
+          ...messages.map((msg) => ({
+            role: msg.author === 'gpt' ? 'assistant' : 'user',
+            content: msg.text,
+          })),
+        ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
+
+        const completion = await openai.chat.completions.create({
+          model: 'llama3',
+          messages: messagesForApi,
+        });
+
+        const gptResponseText = completion.choices[0].message.content;
+
+        if (gptResponseText) {
+          const [cleanText, newArchitecture] = parseArchitecture(gptResponseText);
+          setMessages((prev) => [...prev, { author: 'gpt', text: cleanText }]);
+          if (newArchitecture) {
+            setArchitecture(newArchitecture);
+          }
+        }
+      } catch (error) {
+        console.error('Ошибка при запросе к Ollama:', error);
+        setMessages((prev) => [
+          ...prev,
+          { author: 'gpt', text: 'Извините, произошла ошибка.' },
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    sendRequest();
+    // Если это был стартовый промпт, ставим флаг
+    if (lastMessage.text === startPrompt) {
+      isInitialRequestSent.current = true;
+    }
+  }
+}, [messages, startPrompt]);
 
   function parseArchitecture(responseText: string): [string, any | null] {
     const jsonRegex = /<JSON>(.*?)<\/JSON>/s;
@@ -90,48 +144,13 @@ export function ChatColumn({ setArchitecture }: ChatColumnProps) {
   }
 
   const handleSend = async () => {
-    if (inputValue.trim() === '' || isLoading) return;
+  if (inputValue.trim() === '' || isLoading) return;
 
-    const userMessage: Message = { author: 'user', text: inputValue };
-    const updatedMessages = [...messages, userMessage];
-
-    setMessages(updatedMessages);
-    setInputValue('');
-    setIsLoading(true);
-
-    try {
-      const messagesForApi = [
-  { role: 'system', content: SYSTEM_PROMPT },
-  ...updatedMessages.map((msg) => ({
-    role: msg.author === 'gpt' ? 'assistant' : 'user',
-    content: msg.text,
-  })),
-] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
-
-      const completion = await openai.chat.completions.create({
-        model: 'llama3',
-        messages: messagesForApi,
-      });
-
-      const gptResponseText = completion.choices[0].message.content;
-
-      if (gptResponseText) {
-        const [cleanText, newArchitecture] = parseArchitecture(gptResponseText);
-        setMessages((prev) => [...prev, { author: 'gpt', text: cleanText }]);
-        if (newArchitecture) {
-          setArchitecture(newArchitecture);
-        }
-      }
-    } catch (error) {
-      console.error('Ошибка при запросе к Ollama:', error);
-      setMessages((prev) => [
-        ...prev,
-        { author: 'gpt', text: 'Извините, произошла ошибка. Попробуйте еще раз.' },
-      ]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const userMessage: Message = { author: 'user', text: inputValue };
+  // Используем callback-форму setMessages для получения самого свежего состояния
+  setMessages(prevMessages => [...prevMessages, userMessage]);
+  setInputValue('');
+};
 
   return (
     <div className="flex flex-col h-full bg-slate-800 rounded-lg p-4">
