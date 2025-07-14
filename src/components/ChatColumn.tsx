@@ -52,11 +52,18 @@ const openai = new OpenAI({
 // --- Компонент ---
 export function ChatColumn({startPrompt, setArchitecture }: ChatColumnProps) {
   const [inputValue, setInputValue] = useState('');
-  const [messages, setMessages] = useState<Message[]>([
-  { author: 'gpt', text: 'Здравствуйте! Я ваш GPT-тренер.' },
-  // Сразу добавляем "невидимое" первое сообщение от пользователя
-  { author: 'user', text: startPrompt },
-]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const savedMessages = localStorage.getItem('gpt-arch-trainer-messages');
+    // Если есть сохраненные сообщения, используем их
+    if (savedMessages) {
+      return JSON.parse(savedMessages);
+    }
+    // Иначе - создаем стартовые по умолчанию
+    return [
+      { author: 'gpt', text: 'Здравствуйте! Я ваш GPT-тренер.' },
+      { author: 'user', text: startPrompt },
+    ];
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   const isInitialRequestSent = useRef(false);
@@ -125,6 +132,14 @@ export function ChatColumn({startPrompt, setArchitecture }: ChatColumnProps) {
     }
   }
 }, [messages, startPrompt]);
+
+  // --- ЭФФЕКТ ДЛЯ СОХРАНЕНИЯ СООБЩЕНИЙ ---
+useEffect(() => {
+  // Не сохраняем самое первое, стартовое состояние
+  if (messages.length > 2) { 
+    localStorage.setItem('gpt-arch-trainer-messages', JSON.stringify(messages));
+  }
+}, [messages]); // <-- Запускается при изменении сообщений
 
   function parseArchitecture(responseText: string): [string, any | null] {
     const jsonRegex = /<JSON>(.*?)<\/JSON>/s;

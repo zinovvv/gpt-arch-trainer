@@ -1,15 +1,34 @@
 import { ArtifactColumn } from './components/ArtifactColumn';
 import { ChatColumn } from './components/ChatColumn';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { WelcomeScreen } from './components/WelcomeScreen';
 import type { Task } from './tasks';
 
 function App() {
-  const [architecture, setArchitecture] = useState<any>(null);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  // --- ЗАГРУЗКА СОСТОЯНИЯ ---
+  const [selectedTask, setSelectedTask] = useState<Task | null>(() => {
+    const savedTask = localStorage.getItem('gpt-arch-trainer-task');
+    return savedTask ? JSON.parse(savedTask) : null;
+  });
+
+  const [architecture, setArchitecture] = useState<any>(() => {
+    const savedArch = localStorage.getItem('gpt-arch-trainer-arch');
+    return savedArch ? JSON.parse(savedArch) : null;
+  });
+
+  useEffect(() => {
+    // Сохраняем, только если задача выбрана
+    if (selectedTask) {
+      localStorage.setItem('gpt-arch-trainer-task', JSON.stringify(selectedTask));
+    }
+    if (architecture) {
+      localStorage.setItem('gpt-arch-trainer-arch', JSON.stringify(architecture));
+    }
+  }, [selectedTask, architecture]); // <-- Запускается при изменении задачи или архитектуры
 
 // Функция для обработки выбора задачи
 const handleTaskSelect = (task: Task) => {
+  localStorage.removeItem('gpt-arch-trainer-messages');
   setSelectedTask(task);
   // Сбрасываем архитектуру при выборе новой задачи
   setArchitecture({ components: [], data_flows: [] });
@@ -28,6 +47,18 @@ return (
         className="bg-violet-600 hover:bg-violet-700 px-4 py-2 rounded-md transition-colors"
       >
         Выбрать другую задачу
+      </button>
+      <button
+        onClick={() => {
+          // Очищаем localStorage и перезагружаем страницу
+          localStorage.removeItem('gpt-arch-trainer-task');
+          localStorage.removeItem('gpt-arch-trainer-arch');
+          localStorage.removeItem('gpt-arch-trainer-messages');
+          window.location.reload();
+        }}
+        className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md transition-colors ml-4"
+      >
+        Начать заново
       </button>
     </header>
     
