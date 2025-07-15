@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import OpenAI from 'openai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import type { Task } from '../tasks';
 
 // --- Типы ---
 type Message = {
@@ -8,25 +9,35 @@ type Message = {
 };
 
 type ChatColumnProps = {
-  startPrompt: string;
+  task: Task;
   setArchitecture: React.Dispatch<React.SetStateAction<any>>;
 };
 
 // --- Системный промпт ---
-const SYSTEM_PROMPT = `Ты — 'Archie', русскоязычный системный архитектор и наставник. Твоя задача — вести пользователя через процесс проектирования архитектуры приложения.
+const SYSTEM_PROMPT = `Ты — 'Archie', русскоязычный системный архитектор и наставник. Ты ведешь пользователя через проектирование архитектуры по четким этапам.
 
-**СТРОГИЕ ПРАВИЛА, КОТОРЫЕ ТЫ ОБЯЗАН ВЫПОЛНЯТЬ:**
-1.  **ВСЕГДА отвечай на русском языке.**
-2.  Твой главный инструмент — JSON. **ЛЮБОЕ** упоминание нового компонента, технологии или связи между ними **ТРЕБУЕТ** от тебя генерации JSON-объекта в конце ответа. Даже если это самый первый компонент.
-3.  JSON-объект **ОБЯЗАТЕЛЬНО** должен быть обернут в тег <JSON>...</JSON>. Без исключений.
-4.  JSON **ВСЕГДА** должен содержать полную и актуальную архитектуру, а не только изменения.
-5.  Если добавляется компонент, который общается с уже существующим, ты **ОБЯЗАН** добавить запись в "data_flows".
-6.  В "data_flows" используй "id" компонентов из массива "components".
+**ТВОИ СТРОГИЕ ПРАВИЛА:**
+1.  **Язык:** Всегда и только на русском.
+2.  **Следование плану:** Тебе будут даны ЭТАПЫ ПРОЕКТИРОВАНИЯ. Веди пользователя строго по ним, не перескакивая. После завершения этапа, задавай вопрос для перехода к следующему.
+3.  **Генерация JSON:** Это твое САМОЕ ВАЖНОЕ правило. При ЛЮБОМ добавлении или изменении компонента или связи, ты ОБЯЗАН сгенерировать ПОЛНЫЙ и АКТУАЛЬНЫЙ JSON всей архитектуры.
+4.  **Формат JSON:** JSON-объект ВСЕГДА должен быть обернут в тег <JSON>...</JSON> и идти в самом конце твоего ответа.
+5.  **Связи:** Если добавляется компонент, который общается с другим, ты ОБЯЗАН добавить объект в массив "data_flows", используя "id" компонентов.
+6. **Сохранение контекста:** Если технология для компонента уже была определена, НЕ заменяй ее на "N/A". Всегда сохраняй максимум информации из предыдущих шагов.
+**СТРУКТУРА И ПРИМЕР JSON:**
+Твой JSON должен иметь следующую структуру:
+{
+  "components": [
+    { "id": "...", "name": "...", "tech": "...", "description": "..." }
+  ],
+  "data_flows": [
+    { "from": "...", "to": "...", "description": "..." }
+  ]
+}
 
-**Пример твоего ПРАВИЛЬНОГО ответа:**
-Пользователь: "Начнем с фронтенда на React."
+**Пример твоего идеального ответа:**
+Пользователь: "Давай добавим бэкенд на Node.js для связи с фронтендом."
 Твой ответ:
-Отлично! Добавляем Frontend. Это будет клиентское веб-приложение для пользователей. Какой будет следующий шаг?
+Отлично! Добавляем Back-end на Node.js. Он будет обрабатывать запросы от клиентского приложения.
 
 <JSON>
 {
@@ -35,112 +46,90 @@ const SYSTEM_PROMPT = `Ты — 'Archie', русскоязычный систе�
       "id": "frontend",
       "name": "Frontend",
       "tech": "React",
-      "description": "Клиентское веб-приложение для пользователей."
+      "description": "Клиентское веб-приложение."
+    },
+    {
+      "id": "backend",
+      "name": "Back-end",
+      "tech": "Node.js",
+      "description": "Серверное приложение на Node.js."
     }
   ],
-  "data_flows": []
+  "data_flows": [
+    {
+      "from": "frontend",
+      "to": "backend",
+      "description": "REST API"
+    }
+  ]
 }
-</JSON>`;
+</JSON>
+
+**ЭТАПЫ ПРОЕКТИРОВАНИЯ БУДУТ ПЕРЕДАНЫ ТЕБЕ В КОНТЕКСТЕ ДИАЛОГА.**
+`;
 
 // --- Клиент API ---
-const openai = new OpenAI({
-  baseURL: 'http://localhost:11434/v1',
-  apiKey: 'ollama',
-  dangerouslyAllowBrowser: true,
-});
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+if (!apiKey) {
+  throw new Error("VITE_GEMINI_API_KEY не найден в .env.local");
+}
+const genAI = new GoogleGenerativeAI(apiKey);
+
+// Настройки безопасности (чтобы модель не отказывалась отвечать на темы, связанные с "насилием" в коде и т.д.)
+const safetySettings = [
+    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+];
 
 // --- Компонент ---
-export function ChatColumn({startPrompt, setArchitecture }: ChatColumnProps) {
+export function ChatColumn({ task, setArchitecture }: ChatColumnProps) {
   const [inputValue, setInputValue] = useState('');
-  const [messages, setMessages] = useState<Message[]>(() => {
-    const savedMessages = localStorage.getItem('gpt-arch-trainer-messages');
-    // Если есть сохраненные сообщения, используем их
-    if (savedMessages) {
-      return JSON.parse(savedMessages);
-    }
-    // Иначе - создаем стартовые по умолчанию
-    return [
-      { author: 'gpt', text: 'Здравствуйте! Я ваш GPT-тренер.' },
-      { author: 'user', text: startPrompt },
-    ];
-  });
+  const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const isInitialRequestSent = useRef(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isInitialized = useRef(false);
 
+  // --- Эффекты ---
+
+  // Эффект для инициализации или восстановления чата. Срабатывает только при смене ID задачи.
   useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    const isScrolledToBottom =
-      container.scrollHeight - container.scrollTop <= container.clientHeight + 100;
-    if (isScrolledToBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isInitialized.current) return;
+
+    const savedMessages = localStorage.getItem('gpt-arch-trainer-messages');
+    if (savedMessages && savedMessages !== '[]') {
+      try {
+        setMessages(JSON.parse(savedMessages));
+      } catch (e) {
+        console.error("Ошибка парсинга сообщений из localStorage", e);
+        startNewDialog();
+      }
+    } else {
+      startNewDialog();
+    }
+    
+    isInitialized.current = true;
+  }, [task.id]);
+
+  // Эффект для сохранения сообщений в localStorage
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem('gpt-arch-trainer-messages', JSON.stringify(messages));
+    }
+  }, [messages]);
+
+  // Эффект для авто-скролла
+  useEffect(() => {
+    if(messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
 
-  useEffect(() => {
-  // Этот эффект срабатывает каждый раз, когда меняется массив сообщений
-  const lastMessage = messages[messages.length - 1];
+  // --- Вспомогательные функции ---
 
-  // Если последнее сообщение от пользователя, значит, нужно получить ответ от GPT
-  if (lastMessage?.author === 'user') {
-    if (lastMessage.text === startPrompt && isInitialRequestSent.current) {
-      return; // Если это стартовый промпт и мы уже отправляли запрос, выходим
-    }
-    const sendRequest = async () => {
-      setIsLoading(true);
-      try {
-        const messagesForApi = [
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...messages.map((msg) => ({
-            role: msg.author === 'gpt' ? 'assistant' : 'user',
-            content: msg.text,
-          })),
-        ] as OpenAI.Chat.Completions.ChatCompletionMessageParam[];
-
-        const completion = await openai.chat.completions.create({
-          model: 'llama3',
-          messages: messagesForApi,
-        });
-
-        const gptResponseText = completion.choices[0].message.content;
-
-        if (gptResponseText) {
-          const [cleanText, newArchitecture] = parseArchitecture(gptResponseText);
-          setMessages((prev) => [...prev, { author: 'gpt', text: cleanText }]);
-          if (newArchitecture) {
-            setArchitecture(newArchitecture);
-          }
-        }
-      } catch (error) {
-        console.error('Ошибка при запросе к Ollama:', error);
-        setMessages((prev) => [
-          ...prev,
-          { author: 'gpt', text: 'Извините, произошла ошибка.' },
-        ]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    sendRequest();
-    // Если это был стартовый промпт, ставим флаг
-    if (lastMessage.text === startPrompt) {
-      isInitialRequestSent.current = true;
-    }
-  }
-}, [messages, startPrompt]);
-
-  // --- ЭФФЕКТ ДЛЯ СОХРАНЕНИЯ СООБЩЕНИЙ ---
-useEffect(() => {
-  // Не сохраняем самое первое, стартовое состояние
-  if (messages.length > 2) { 
-    localStorage.setItem('gpt-arch-trainer-messages', JSON.stringify(messages));
-  }
-}, [messages]); // <-- Запускается при изменении сообщений
-
+  // Парсер JSON из ответа
   function parseArchitecture(responseText: string): [string, any | null] {
     const jsonRegex = /<JSON>(.*?)<\/JSON>/s;
     const match = responseText.match(jsonRegex);
@@ -148,70 +137,102 @@ useEffect(() => {
       const jsonString = match[1];
       const cleanText = responseText.replace(jsonRegex, '').trim();
       try {
-        const parsedJson = JSON.parse(jsonString);
-        return [cleanText, parsedJson];
+        return [cleanText, JSON.parse(jsonString)];
       } catch (e) {
         console.error('Ошибка парсинга JSON:', e);
-        return [responseText, null];
       }
     }
     return [responseText, null];
   }
 
-  const handleSend = async () => {
-  if (inputValue.trim() === '' || isLoading) return;
+  // Общая функция для отправки запроса к API
+const getGptResponse = async (history: Message[], isNewDialog = false) => {
+  setIsLoading(true);
+  try {
+    // У Gemini нет разделения на system/user/assistant, он принимает "историю" и новый запрос.
+    // Мы "склеиваем" наш системный промпт и контекст задачи в один большой стартовый блок.
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", safetySettings });
+    
+    const chat = model.startChat({
+      // Вся история передается сюда. Gemini сам разберется, кто есть кто.
+      history: [
+        { role: "user", parts: [{ text: SYSTEM_PROMPT }] },
+        { role: "model", parts: [{ text: "Понял. Я готов вести пользователя по сценарию." }] },
+        ...history.slice(0, -1).map(msg => ({
+          role: msg.author === 'user' ? 'user' : 'model',
+          parts: [{ text: msg.text }]
+        }))
+      ],
+    });
 
-  const userMessage: Message = { author: 'user', text: inputValue };
-  // Используем callback-форму setMessages для получения самого свежего состояния
-  setMessages(prevMessages => [...prevMessages, userMessage]);
-  setInputValue('');
+    // Отправляем только самое последнее сообщение пользователя
+    const lastMessage = history[history.length - 1].text;
+    const result = await chat.sendMessage(lastMessage);
+    const gptResponseText = result.response.text();
+
+    if (gptResponseText) {
+      const [cleanText, newArchitecture] = parseArchitecture(gptResponseText);
+      const gptMessage: Message = { author: 'gpt', text: cleanText };
+
+      if (isNewDialog) {
+        setMessages([gptMessage]);
+      } else {
+        setMessages((prev) => [...prev, gptMessage]);
+      }
+
+      if (newArchitecture) setArchitecture(newArchitecture);
+    }
+  } catch (error) {
+    console.error('Ошибка при запросе к Google Gemini API:', error);
+    setMessages((prev) => [...prev, { author: 'gpt', text: 'Извините, произошла ошибка с Gemini API.' }]);
+  } finally {
+    setIsLoading(false);
+  }
 };
 
+  // Инициализация нового диалога
+  const startNewDialog = () => {
+    const firstUserMessage: Message = { author: 'user', text: `Привет! Начинаем проектирование задачи "${task.title}". Задай свой первый вопрос.` };
+    setMessages([]); // Очищаем старые сообщения перед стартом
+    getGptResponse([firstUserMessage], true);
+  };
+
+  // Отправка сообщения от пользователя
+  const handleSend = () => {
+    if (inputValue.trim() === '' || isLoading) return;
+    const userMessage: Message = { author: 'user', text: inputValue };
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
+    setInputValue('');
+    getGptResponse(newMessages);
+  };
+
+  // --- Рендеринг JSX ---
   return (
     <div className="flex flex-col h-full bg-slate-800 rounded-lg p-4">
-      <h2 className="text-xl font-bold mb-4 border-b border-slate-600 pb-2">
-        Диалог с тренером
-      </h2>
-      <div
-        ref={messagesContainerRef}
-        className="flex-1 flex flex-col space-y-4 overflow-y-auto pr-2"
-      >
+      <h2 className="text-xl font-bold mb-4 border-b border-slate-600 pb-2">Диалог с тренером</h2>
+      <div ref={messagesContainerRef} className="flex-1 flex flex-col space-y-4 overflow-y-auto pr-2">
         {messages.map((msg, index) => (
-          <div
-            key={index}
-            className={`p-3 rounded-lg max-w-[85%] ${
-              msg.author === 'user'
-                ? 'bg-violet-600 self-end'
-                : 'bg-slate-600 self-start'
-            }`}
-          >
-            <p className="text-white whitespace-pre-wrap">{msg.text}</p>
-          </div>
+            <div key={index} className={`p-3 rounded-lg max-w-[85%] whitespace-pre-wrap ${msg.author === 'user' ? 'bg-violet-600 self-end' : 'bg-slate-600 self-start'}`}>
+                <p className="text-white">{msg.text}</p>
+            </div>
         ))}
         {isLoading && (
-          <div className="p-3 rounded-lg max-w-[85%] bg-slate-600 self-start">
-            <p className="text-white animate-pulse">Печатает...</p>
-          </div>
+            <div className="p-3 rounded-lg max-w-[85%] bg-slate-600 self-start">
+                <p className="text-white animate-pulse">Печатает...</p>
+            </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
-      <div>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSend();
-          }}
-        >
-          <input
-            type="text"
-            placeholder="Начните проектирование..."
-            className="w-full p-2 rounded bg-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            disabled={isLoading}
-          />
-        </form>
-      </div>
+      <form onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
+        <input
+          type="text"
+          placeholder="Ваш ответ тренеру..."
+          className="w-full p-2 mt-4 rounded bg-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          disabled={isLoading}
+        />
+      </form>
     </div>
   );
 }

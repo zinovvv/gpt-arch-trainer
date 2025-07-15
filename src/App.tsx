@@ -65,7 +65,7 @@ return (
     <main className="flex-1 grid grid-cols-2 gap-4 overflow-hidden">
       <ChatColumn
         // Передаем стартовый промпт выбранной задачи
-        startPrompt={selectedTask.startPrompt} 
+        task={selectedTask} 
         setArchitecture={setArchitecture}
         // Добавляем key, чтобы компонент чата "пересоздавался" при смене задачи
         key={selectedTask.id}

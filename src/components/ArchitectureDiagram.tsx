@@ -23,20 +23,25 @@ export function ArchitectureDiagram({ architecture }: ArchitectureDiagramProps) 
 
   // Функция для преобразования JSON в Mermaid-синтаксис
   const generateMermaidSyntax = () => {
+    if (!architecture || !architecture.components || !architecture.data_flows) {
+    return 'graph TD;\n  error["Нет данных для отображения"];';
+  }
     let syntax = 'graph TD;\n'; // TD = Top-Down (сверху вниз)
 
     // Добавляем компоненты
     architecture.components.forEach(comp => {
       // Пример: frontend["Frontend (React)"]
-      syntax += `  ${comp.id}["${comp.name}"];\n`;
+      syntax += `  ${comp.id}(${JSON.stringify(comp.name)});\n`;
     });
 
     // Добавляем потоки данных
     architecture.data_flows.forEach(flow => {
-      // Пример: frontend -- "REST API" --> backend
-      const label = flow.description ? ` -- "${flow.description}" --> ` : ' --> ';
-      syntax += `  ${flow.from}${label}${flow.to};\n`;
-    });
+  // Рисуем связь, только если оба id существуют и не пустые
+  if (flow.from && flow.to) { 
+    const label = flow.description ? ` -- "${flow.description}" --> ` : ' --> ';
+    syntax += `  ${flow.from}${label}${flow.to};\n`;
+  }
+});
 
     return syntax;
   };

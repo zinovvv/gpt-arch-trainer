@@ -51,7 +51,7 @@ export function ArtifactColumn({ architecture }: ArtifactColumnProps) {
       {activeTab === 'components' && (
         <div>
           <h3 className="text-lg font-semibold mb-3">Компоненты системы</h3>
-          {architecture.components.map((comp: any) => (
+          {architecture && architecture.components && architecture.components.map((comp: any) => (
             <div key={comp.id} className="mb-4 p-3 bg-slate-700 rounded-md">
               <p className="font-bold text-violet-400">{comp.name}</p>
               <p className="text-sm text-slate-300"><b>Технология:</b> {comp.tech}</p>
@@ -66,7 +66,7 @@ export function ArtifactColumn({ architecture }: ArtifactColumnProps) {
           <h3 className="text-lg font-semibold mb-3">Используемые технологии</h3>
           <ul className="list-disc list-inside">
             {/* Собираем уникальные технологии из всех компонентов */}
-            {[...new Set(architecture.components.map((c: any) => c.tech))].map((tech: any) => (
+            {architecture && architecture.components && [...new Set(architecture.components.map((c: any) => c.tech))].filter(tech => tech).map((tech: any) => (
               <li key={tech} className="text-slate-300">{tech}</li>
             ))}
           </ul>
