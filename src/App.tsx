@@ -39,35 +39,38 @@ if (!selectedTask) {
 }
 
 return (
-  <div className="bg-slate-900 text-white min-h-screen flex flex-col p-4 gap-4">
-    <header className="bg-slate-800 rounded-lg p-4 border-b-2 border-violet-500 flex justify-between items-center">
+  // 1. Делаем основной контейнер "полотном" для позиционирования
+  <div className="bg-slate-900 text-white h-screen w-screen p-4 flex flex-col gap-4 relative">
+    
+    {/* 2. Шапка остается простой */}
+    <header className="bg-slate-800 rounded-lg p-4 border-b-2 border-violet-500 flex justify-between items-center z-10">
       <h1 className="text-2xl font-bold">Проектирование: {selectedTask.title}</h1>
-      <button 
-        onClick={() => setSelectedTask(null)}
-        className="bg-violet-600 hover:bg-violet-700 px-4 py-2 rounded-md transition-colors"
-      >
-        Выбрать другую задачу
-      </button>
-      <button
-        onClick={() => {
-          // Очищаем localStorage и перезагружаем страницу
-          localStorage.removeItem('gpt-arch-trainer-task');
-          localStorage.removeItem('gpt-arch-trainer-arch');
-          localStorage.removeItem('gpt-arch-trainer-messages');
-          window.location.reload();
-        }}
-        className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md transition-colors ml-4"
-      >
-        Начать заново
-      </button>
+      <div className="flex items-center">
+        <button 
+          onClick={() => setSelectedTask(null)}
+          className="bg-violet-600 hover:bg-violet-700 px-4 py-2 rounded-md transition-colors"
+        >
+          Выбрать другую задачу
+        </button>
+        <button
+          onClick={() => {
+            localStorage.clear(); // Очищаем всё сразу
+            window.location.reload();
+          }}
+          className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-md transition-colors ml-4"
+        >
+          Начать заново
+        </button>
+      </div>
     </header>
     
-    <main className="flex-1 grid grid-cols-2 gap-4 overflow-hidden">
+    {/* 3. Основная часть с колонками. 
+        Мы УБИРАЕМ flex-1 и grid. Мы будем позиционировать ее абсолютно. 
+        Это заставит ее растянуться и занять все место, которое мы ей укажем. */}
+    <main className="grid grid-cols-2 gap-4 flex-1">
       <ChatColumn
-        // Передаем стартовый промпт выбранной задачи
         task={selectedTask} 
         setArchitecture={setArchitecture}
-        // Добавляем key, чтобы компонент чата "пересоздавался" при смене задачи
         key={selectedTask.id}
       />
       {architecture && <ArtifactColumn architecture={architecture} />}

@@ -123,10 +123,14 @@ export function ChatColumn({ task, setArchitecture }: ChatColumnProps) {
 
   // Эффект для авто-скролла
   useEffect(() => {
-    if(messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    if (messagesContainerRef.current) {
+        // Просто всегда прокручиваем контейнер в самый низ
+        messagesContainerRef.current.scrollTo({
+            top: messagesContainerRef.current.scrollHeight,
+            behavior: 'smooth' // Оставляем плавную прокрутку
+        });
     }
-  }, [messages, isLoading]);
+}, [messages, isLoading]);
 
   // --- Вспомогательные функции ---
 
@@ -209,31 +213,61 @@ const getGptResponse = async (history: Message[], isNewDialog = false) => {
   };
 
   // --- Рендеринг JSX ---
-  return (
-    <div className="flex flex-col h-full bg-slate-800 rounded-lg p-4">
-      <h2 className="text-xl font-bold mb-4 border-b border-slate-600 pb-2">Диалог с тренером</h2>
-      <div ref={messagesContainerRef} className="flex-1 flex flex-col space-y-4 overflow-y-auto pr-2">
+return (
+  // 1. Родительский блок колонки. h-full, чтобы занять всю высоту ячейки грида.
+  //    relative, чтобы стать "полотном" для дочерних абсолютных элементов.
+  <div className="flex flex-col h-full bg-slate-800 rounded-lg p-4 relative">
+    
+    {/* 2. Заголовок. flex-shrink-0 не дает ему сжиматься. */}
+    <h2 className="text-xl font-bold mb-4 border-b border-slate-600 pb-2 flex-shrink-0">
+      Диалог с тренером
+    </h2>
+    
+    {/* 3. Контейнер для сообщений. Позиционируется абсолютно. */}
+    {/* top-20 и bottom-20 - это отступы сверху и снизу от краев родителя.
+        left-4 и right-4 - отступы по бокам, равные p-4 родителя. */}
+    <div
+      ref={messagesContainerRef}
+      className="absolute top-20 bottom-20 left-4 right-4 overflow-y-auto pr-2"
+    >
+      <div className="flex flex-col gap-4">
         {messages.map((msg, index) => (
-            <div key={index} className={`p-3 rounded-lg max-w-[85%] whitespace-pre-wrap ${msg.author === 'user' ? 'bg-violet-600 self-end' : 'bg-slate-600 self-start'}`}>
-                <p className="text-white">{msg.text}</p>
-            </div>
+          <div
+            key={index}
+            className={`p-3 rounded-lg max-w-[85%] whitespace-pre-wrap ${
+              msg.author === 'user'
+                ? 'bg-violet-600 self-end'
+                : 'bg-slate-600 self-start'
+            }`}
+          >
+            <p className="text-white">{msg.text}</p>
+          </div>
         ))}
         {isLoading && (
-            <div className="p-3 rounded-lg max-w-[85%] bg-slate-600 self-start">
-                <p className="text-white animate-pulse">Печатает...</p>
-            </div>
+          <div className="p-3 rounded-lg max-w-[85%] bg-slate-600 self-start">
+            <p className="text-white animate-pulse">Печатает...</p>
+          </div>
         )}
       </div>
-      <form onSubmit={(e) => { e.preventDefault(); handleSend(); }}>
-        <input
-          type="text"
-          placeholder="Ваш ответ тренеру..."
-          className="w-full p-2 mt-4 rounded bg-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          disabled={isLoading}
-        />
-      </form>
     </div>
-  );
+    
+    {/* 4. Форма ввода. Позиционируется абсолютно в самом низу. */}
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        handleSend();
+      }}
+      className="absolute bottom-4 left-4 right-4"
+    >
+      <input
+        type="text"
+        placeholder="Ваш ответ тренеру..."
+        className="w-full p-2 rounded bg-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        disabled={isLoading}
+      />
+    </form>
+  </div>
+);
 }
