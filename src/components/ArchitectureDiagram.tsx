@@ -13,8 +13,13 @@ mermaid.initialize({
 
 type ArchitectureDiagramProps = {
   architecture: {
-    components: Array<{ id: string; name: string }>;
-    data_flows: Array<{ from: string; to: string; description?: string }>;
+    components: Array<{ id: string; name: string; tech?: string; description?: string }>;
+    data_flows: Array<{ 
+      from: string; 
+      to: string; 
+      description?: string; 
+      type?: string; // <-- ДОБАВИЛИ ЭТУ СТРОКУ
+    }>;
   };
 };
 
@@ -38,7 +43,9 @@ export function ArchitectureDiagram({ architecture }: ArchitectureDiagramProps) 
     architecture.data_flows.forEach(flow => {
   // Рисуем связь, только если оба id существуют и не пустые
   if (flow.from && flow.to) { 
-    const label = flow.description ? ` -- "${flow.description}" --> ` : ' --> ';
+    // Приоритет отдаем полю type, если его нет - используем description
+    const labelText = flow.type || flow.description || ''; 
+    const label = labelText ? ` -- "${labelText}" --> ` : ' --> ';
     syntax += `  ${flow.from}${label}${flow.to};\n`;
   }
 });
