@@ -1,10 +1,10 @@
 import mermaid from 'mermaid';
 import { useEffect, useRef } from 'react';
 
-// Задаем глобальные настройки для Mermaid
+// глобальные настройки для Mermaid
 mermaid.initialize({
-  startOnLoad: false, // Мы будем рендерить диаграммы вручную
-  theme: 'dark', // Используем темную тему
+  startOnLoad: false, 
+  theme: 'dark', 
   securityLevel: 'loose',
   flowchart: {
     useMaxWidth: true,
@@ -18,7 +18,7 @@ type ArchitectureDiagramProps = {
       from: string; 
       to: string; 
       description?: string; 
-      type?: string; // <-- ДОБАВИЛИ ЭТУ СТРОКУ
+      type?: string; 
     }>;
   };
 };
@@ -35,7 +35,6 @@ export function ArchitectureDiagram({ architecture }: ArchitectureDiagramProps) 
 
     // Добавляем компоненты
     architecture.components.forEach(comp => {
-      // Пример: frontend["Frontend (React)"]
       syntax += `  ${comp.id}(${JSON.stringify(comp.name)});\n`;
     });
 
@@ -43,7 +42,6 @@ export function ArchitectureDiagram({ architecture }: ArchitectureDiagramProps) 
     architecture.data_flows.forEach(flow => {
   // Рисуем связь, только если оба id существуют и не пустые
   if (flow.from && flow.to) { 
-    // Приоритет отдаем полю type, если его нет - используем description
     const labelText = flow.type || flow.description || ''; 
     const label = labelText ? ` -- "${labelText}" --> ` : ' --> ';
     syntax += `  ${flow.from}${label}${flow.to};\n`;
@@ -67,7 +65,7 @@ export function ArchitectureDiagram({ architecture }: ArchitectureDiagramProps) 
         }
       }).catch(e => console.error(e));
     }
-  }, [architecture]); // <-- Перерисовываем диаграмму при каждом изменении архитектуры
+  }, [architecture]); // Перерисовываем диаграмму при каждом изменении архитектуры
 
   return (
     <div
