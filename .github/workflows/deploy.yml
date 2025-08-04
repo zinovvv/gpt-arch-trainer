@@ -1,0 +1,57 @@
+# Название нашего рабочего процесса
+name: Deploy to GitHub Pages
+
+# Указываем, когда запускать этот процесс
+on:
+  # Запускать при пуше в ветку 'main'
+  push:
+    branches: [ "main" ]
+  # Позволяет запускать этот процесс вручную со страницы Actions
+  workflow_dispatch:
+
+# Устанавливаем разрешения для GITHUB_TOKEN, чтобы разрешить деплой
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Отменяем предыдущие запуски для этого же коммита, чтобы избежать гонок
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+# Определяем задачи, которые будут выполняться
+jobs:
+  # Задача сборки проекта
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm install
+      - name: Build
+        run: npm run build
+        env: # Передаем наш секрет в команду сборки
+          VITE_GEMINI_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+  # Задача деплоя
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
