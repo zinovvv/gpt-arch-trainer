@@ -7,6 +7,14 @@ type ArtifactColumnProps = {
 
 type Tab = 'schema' | 'components' | 'tech';
 
+// Описываем, как выглядит один компонент в нашем JSON
+type ArchComponent = {
+  id: string;
+  name: string;
+  tech: string;
+  description: string;
+};
+
 export function ArtifactColumn({ architecture }: ArtifactColumnProps) {
   const [activeTab, setActiveTab] = useState<Tab>('schema');
   return (
@@ -53,7 +61,7 @@ export function ArtifactColumn({ architecture }: ArtifactColumnProps) {
       {activeTab === 'components' && (
         <div>
           <h3 className="text-lg font-semibold mb-3">Компоненты системы</h3>
-          {architecture?.components?.filter(comp => comp.id && comp.name).map((comp: any) => (
+          {architecture && architecture.components && architecture.components.map((comp: ArchComponent) => (
             <div key={comp.id} className="mb-4 p-3 bg-slate-700 rounded-md">
               <p className="font-bold text-violet-400">{comp.name}</p>
               {comp.tech && <p className="text-sm text-slate-300"><b>Технология:</b> {comp.tech}</p>}
@@ -67,7 +75,7 @@ export function ArtifactColumn({ architecture }: ArtifactColumnProps) {
         <div>
           <h3 className="text-lg font-semibold mb-3">Используемые технологии</h3>
           <ul className="list-disc list-inside">
-            {architecture?.components && [...new Set(architecture.components.map((c: any) => c.tech))]
+            {architecture?.components && [...new Set(architecture.components.map((c: ArchComponent) => c.tech))]
               .filter(tech => tech && tech !== 'N/A')
               .map((tech: any) => (
                 <li key={tech} className="text-slate-300">{tech}</li>
